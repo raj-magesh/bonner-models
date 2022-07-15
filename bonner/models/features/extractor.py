@@ -25,7 +25,7 @@ def extract_features(
     cache_dir: Path = None,
 ):
     if not cache_dir:
-        cache_dir = Path(os.getenv("FEATURE_EXTRACTION_CACHE", str(Path.home())))
+        cache_dir = Path(os.getenv("MODELS_CACHE", str(Path.home())))
     parent_dir = cache_dir / ".".join(
         [
             _
@@ -97,15 +97,19 @@ def _initialize_netcdf4_file(
     node: str, features: torch.Tensor, file: netCDF4.Dataset
 ) -> None:
     if features.ndim == 4:
-        dimensions = ("stimulus", "channel", "spatial_0", "spatial_1")
+        dimensions = ("presentation", "channel", "spatial_0", "spatial_1")
     elif features.ndim == 2:
-        dimensions = ("stimulus", "channel")
+        dimensions = ("presentation", "channel")
     for dimension, length in zip(dimensions, (None, *features.shape[1:])):
         file.createDimension(dimension, length)
         variable = file.createVariable(dimension, np.int64, (dimension,))
         if length:
             variable[:] = np.arange(length)
-    dtype = np.dtype(getattr(np, str(torch.float32).replace("torch.", "")))
+        if dimension == "presentation":
+            # TODO allow filling with string
+            raise NotImplementedError()
+            variable = file.createVariable("stimulus_id", NP.STRING, (dimension,))
+    dtype = np.dtype(getattr(np, str(features.dtype).replace("torch.", "")))
     file.createVariable(node, dtype, dimensions)
 
 
