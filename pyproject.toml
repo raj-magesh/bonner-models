@@ -6,11 +6,28 @@ build-backend = "setuptools.build_meta"
 name = "bonner-models"
 description = "Bonner lab utilities for interacting with neural networks"
 readme = "README.md"
-keywords = ["Bonner Lab", "neural networks"]
-author = "Raj Magesh Gauthaman"
-author_email = "rgautha1@jh.edu"
-url = "https://github.com/raj-magesh/bonner-models"
-license = {text = "GNU General Public License v3.0"}
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Raj Magesh Gauthaman", email = "rgautha1@jh.edu"}
+]
+keywords = [
+    "Bonner Lab",
+    "neural networks"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Natural Language :: English",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+    "Environment :: GPU",
+]
+urls = {repository = "https://github.com/raj-magesh/bonner-models"}
 dependencies = [
     "tqdm",
     "numpy",
