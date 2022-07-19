@@ -2,4 +2,4 @@
 
 ## Environment variables
 
-`MODELS_CACHE`
+`MODELS_HOME`

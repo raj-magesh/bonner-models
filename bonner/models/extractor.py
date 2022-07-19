@@ -1,6 +1,4 @@
-from typing import Callable, Tuple, Iterable, Mapping, Any
-from pathlib import Path
-import os
+from typing import Callable, Tuple, Iterable, Mapping, Dict, List, Any
 
 from tqdm import tqdm
 import netCDF4
@@ -10,11 +8,14 @@ import torch
 from torchvision.models.feature_extraction import create_feature_extractor
 from torchdata.datapipes.iter import Mapper, Batcher, IterableWrapper
 
+from .utils import _MODELS_HOME
 
-def extract_features(
+
+def _extract_features(
     model: Tuple[str, torch.nn.modules.module.Module],
     stimuli: Tuple[str, Iterable[Any]],
-    nodes: Iterable[str],
+    nodes: List[str],
+    stimulus_ids: Iterable[str] = [],
     batch_size: int = 256,
     pre_hook: Tuple[str, Callable[[Any], torch.Tensor]] = ("", lambda x: x),
     post_hook: Tuple[
@@ -22,23 +23,25 @@ def extract_features(
     ] = ("", lambda x: x),
     custom_identifier: str = "",
     use_cached: bool = True,
-    cache_dir: Path = None,
-):
-    if not cache_dir:
-        cache_dir = Path(os.getenv("MODELS_CACHE", str(Path.home())))
-    parent_dir = cache_dir / ".".join(
-        [
-            _
-            for _ in [
-                model[0],
-                stimuli[0],
-                pre_hook[0],
-                post_hook[0],
-                custom_identifier,
+) -> Dict[str, xr.DataArray]:
+    parent_dir = (
+        _MODELS_HOME
+        / "features"
+        / ".".join(
+            [
+                _
+                for _ in [
+                    model[0],
+                    stimuli[0],
+                    pre_hook[0],
+                    post_hook[0],
+                    custom_identifier,
+                ]
+                if len(_) != 0
             ]
-            if len(_) != 0
-        ]
+        )
     )
+    # FIXME directory name could be too long: figure out way to systematically hash/truncate
     parent_dir.mkdir(exist_ok=True, parents=True)
     filepaths = {node: parent_dir / f"{node}.nc" for node in nodes}
 
@@ -79,7 +82,9 @@ def extract_features(
                 features_node = features[node].detach().cpu().numpy()
 
                 if batch == 0:
-                    _initialize_netcdf4_file(node, features_node, netcdf4_file)
+                    _initialize_netcdf4_file(
+                        node, features_node, len(stimuli), stimulus_ids, netcdf4_file
+                    )
 
                 features_saved = netcdf4_file.variables[node]
                 features_saved[start : start + len(batch_data), ...] = features_node
@@ -94,25 +99,25 @@ def extract_features(
 
 
 def _initialize_netcdf4_file(
-    node: str, features: torch.Tensor, file: netCDF4.Dataset
+    node: str,
+    features: torch.Tensor,
+    n_stimuli: int,
+    stimulus_ids: Iterable[str],
+    file: netCDF4.Dataset,
 ) -> None:
     if features.ndim == 4:
-        dimensions = ("presentation", "channel", "spatial_0", "spatial_1")
+        dimensions = ("presentation", "channel", "spatial_x", "spatial_y")
     elif features.ndim == 2:
         dimensions = ("presentation", "channel")
-    for dimension, length in zip(dimensions, (None, *features.shape[1:])):
+
+    for dimension, length in zip(dimensions, (n_stimuli, *features.shape[1:])):
         file.createDimension(dimension, length)
-        variable = file.createVariable(dimension, np.int64, (dimension,))
-        if length:
+        if dimension == "presentation" and len(stimulus_ids) != 0:
+            variable = file.createVariable(dimension, str, (dimension,))
+            variable[:] = stimulus_ids
+        else:
+            variable = file.createVariable(dimension, np.int64, (dimension,))
             variable[:] = np.arange(length)
-        if dimension == "presentation":
-            # TODO allow filling with string
-            raise NotImplementedError()
-            variable = file.createVariable("stimulus_id", NP.STRING, (dimension,))
+
     dtype = np.dtype(getattr(np, str(features.dtype).replace("torch.", "")))
     file.createVariable(node, dtype, dimensions)
-
-
-# FIXME stimulus coord is fucked - have to assign unique IDs -  settle on StimulusSet?
-# TODO include metadata about when and how the features were extracted in an attr?
-# TODO support for multiple post_hooks? Or force users to compose before passing?
