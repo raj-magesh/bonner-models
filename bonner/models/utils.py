@@ -4,7 +4,7 @@ import os
 
 import xarray as xr
 
-BONNER_MODELS_HOME = Path(os.getenv("MODELS_HOME", str(Path.home())))
+BONNER_MODELS_HOME = Path(os.getenv("BONNER_MODELS_HOME", str(Path.home())))
 
 
 def concatenate_features(features: Dict[str, xr.DataArray]) -> xr.DataArray:

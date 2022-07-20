@@ -16,7 +16,9 @@ def preprocess(filepath: Path) -> torch.Tensor:
     return weights.transforms()(Image.open(filepath))
 
 
-dataset = DTD(os.getenv("DATASETS_HOME"), download=True)
+dataset = DTD(
+    os.getenv("BONNER_DATASETS_HOME", str(Path.home() / "datasets")), download=True
+)
 stimuli = list((Path(dataset.root) / "dtd" / "dtd" / "images").rglob("*.jpg"))
 
 extractor = FeatureExtractor(
