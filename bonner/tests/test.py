@@ -31,8 +31,7 @@ extractor = FeatureExtractor(
     post_hook_identifier="maxpool",
 )
 
-
-features = extractor.extract(
+features = extractor(
     stimuli=stimuli,
     stimulus_ids=[],
     stimulus_set_identifier="DTD",

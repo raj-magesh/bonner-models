@@ -9,7 +9,7 @@ import torch
 from torchvision.models.feature_extraction import create_feature_extractor
 from torchdata.datapipes.iter import Mapper, Batcher, IterableWrapper
 
-from .utils import _MODELS_HOME
+from .utils import BONNER_MODELS_HOME
 
 
 class FeatureExtractor:
@@ -55,7 +55,7 @@ class FeatureExtractor:
         self.pre_hook_identifier = pre_hook_identifier
         self.post_hook_identifier = post_hook_identifier
 
-    def extract(
+    def __call__(
         self,
         stimuli: List[Path],
         *,
@@ -138,7 +138,7 @@ class FeatureExtractor:
         self, *, stimulus_set_identifier: str = "", custom_identifier: str = ""
     ) -> Path:
         cache_dir = (
-            _MODELS_HOME
+            BONNER_MODELS_HOME
             / "features"
             / ".".join(
                 [

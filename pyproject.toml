@@ -27,7 +27,7 @@ classifiers = [
     "Typing :: Typed",
     "Environment :: GPU",
 ]
-urls = {repository = "https://github.com/raj-magesh/bonner-models"}
+urls = {repository = "https://github.com/BonnerLab/bonner-models"}
 dependencies = [
     "tqdm",
     "numpy",

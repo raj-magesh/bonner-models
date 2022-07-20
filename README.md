@@ -1,9 +1,29 @@
-# Models
+# Bonner Lab Models
 
-## Usage
+Utilities for working with PyTorch models.
 
-A sample script to extract activations from a model can be seen at `bonner/tests/test.py`.
+## Installation
+
+`pip install git+https://github.com/BonnerLab/bonner-models`
+
+## API
+
+`bonner.models` exposes the following public classes:
+
+- `FeatureExtractor`: to extract features
+- `hooks.<>`: hooks for post-processing extracted features
 
 ## Environment variables
 
-`MODELS_HOME`
+All data will be stored at the path specified by `BONNER_MODELS_HOME`.
+
+## Dependencies
+
+- `tqdm`
+- `numpy`
+- `xarray`
+- `netCDF4`
+- `torch`
+- `torchvision`
+- `torchdata`
+- `Pillow`
