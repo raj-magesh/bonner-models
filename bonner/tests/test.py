@@ -16,6 +16,9 @@ def preprocess(filepath: Path) -> torch.Tensor:
     return weights.transforms()(Image.open(filepath))
 
 
+dataset = DTD(os.getenv("DATASETS_HOME"), download=True)
+stimuli = list((Path(dataset.root) / "dtd" / "dtd" / "images").rglob("*.jpg"))
+
 extractor = FeatureExtractor(
     model=alexnet(weights=weights),
     nodes=[
@@ -28,11 +31,12 @@ extractor = FeatureExtractor(
     post_hook_identifier="maxpool",
 )
 
-input = DTD(os.getenv("DATASETS_HOME"), download=True)
-input = list((Path(input.root) / "dtd" / "dtd" / "images").rglob("*.jpg"))[:500]
 
 features = extractor.extract(
-    stimuli=input,
+    stimuli=stimuli,
+    stimulus_ids=[],
     stimulus_set_identifier="DTD",
+    custom_identifier="",
+    use_cached=True,
+    batch_size=256,
 )
-print(1)
