@@ -6,6 +6,10 @@ Utilities for working with PyTorch models.
 
 `pip install git+https://github.com/BonnerLab/bonner-models`
 
+## Usage
+
+See `bonner/tests/test.py` for some example usage.
+
 ## API
 
 `bonner.models` exposes the following public classes:
@@ -27,3 +31,10 @@ All data will be stored at the path specified by `BONNER_MODELS_HOME`.
 - `torchvision`
 - `torchdata`
 - `Pillow`
+
+## Things to do
+
+- TODO implement logging
+- TODO write tests
+- TODO write documentation
+- TODO remove `setup.py` once `setuptools` [allows editable installs with a `pyproject.toml`](https://github.com/pypa/setuptools/issues/2816)
