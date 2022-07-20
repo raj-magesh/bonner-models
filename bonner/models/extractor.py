@@ -1,4 +1,5 @@
-from typing import Callable, Tuple, Iterable, Mapping, Dict, List, Any
+from pathlib import Path
+from typing import Callable, Dict, List
 
 from tqdm import tqdm
 import netCDF4
@@ -11,113 +12,168 @@ from torchdata.datapipes.iter import Mapper, Batcher, IterableWrapper
 from .utils import _MODELS_HOME
 
 
-def _extract_features(
-    model: Tuple[str, torch.nn.modules.module.Module],
-    stimuli: Tuple[str, Iterable[Any]],
-    nodes: List[str],
-    stimulus_ids: Iterable[str] = [],
-    batch_size: int = 256,
-    pre_hook: Tuple[str, Callable[[Any], torch.Tensor]] = ("", lambda x: x),
-    post_hook: Tuple[
-        str, Callable[[Mapping[str, torch.Tensor]], Mapping[str, torch.Tensor]]
-    ] = ("", lambda x: x),
-    custom_identifier: str = "",
-    use_cached: bool = True,
-) -> Dict[str, xr.DataArray]:
-    parent_dir = (
-        _MODELS_HOME
-        / "features"
-        / ".".join(
-            [
-                _
-                for _ in [
-                    model[0],
-                    stimuli[0],
-                    pre_hook[0],
-                    post_hook[0],
-                    custom_identifier,
-                ]
-                if len(_) != 0
-            ]
+class FeatureExtractor:
+    def __init__(
+        self,
+        model: torch.nn.modules.module.Module,
+        nodes: List[str],
+        *,
+        pre_hook: Callable[[Path], torch.Tensor],
+        post_hook: Callable[
+            [Dict[str, torch.Tensor]], Dict[str, torch.Tensor]
+        ] = lambda x: x,
+        model_identifier: str = "",
+        pre_hook_identifier: str = "",
+        post_hook_identifier: str = "",
+    ) -> None:
+        """TODO write documentation
+        TODO this function writes to netCDF files on disk at every batch: is this asynchronous and does it begin computing the next batch in parallel or not?
+
+        :param model: _description_
+        :type model: torch.nn.modules.module.Module
+        :param nodes: _description_
+        :type nodes: List[str]
+        :param pre_hook: _description_
+        :type pre_hook: Callable[[Path], torch.Tensor]
+        :param post_hook: _description_, defaults to lambdax:x
+        :type post_hook: _type_, optional
+        :param model_identifier: _description_, defaults to ""
+        :type model_identifier: str, optional
+        :param pre_hook_identifier: _description_, defaults to ""
+        :type pre_hook_identifier: str, optional
+        :param post_hook_identifier: _description_, defaults to ""
+        :type post_hook_identifier: str, optional
+        """
+        self.model = model
+        self.model.eval()
+        self.nodes = nodes
+        self.pre_hook = pre_hook
+        self.post_hook = post_hook
+        self.model_identifier = model_identifier
+        self.pre_hook_identifier = pre_hook_identifier
+        self.post_hook_identifier = post_hook_identifier
+
+    def extract(
+        self,
+        stimuli: List[Path],
+        *,
+        stimulus_ids: List[str] = [],
+        stimulus_set_identifier: str = "",
+        custom_identifier: str = "",
+        use_cached: bool = True,
+        batch_size: int = 256,
+    ) -> Dict[str, xr.DataArray]:
+        if not stimulus_ids:
+            stimulus_ids = [str(id) for id, _ in enumerate(stimuli)]
+        else:
+            assert len(stimuli) == len(
+                stimulus_ids
+            ), "the number of stimulus_ids does not match the number of stimuli"
+        stimulus_ids = np.array(stimulus_ids)
+
+        cache_dir = self._create_cache_directory(
+            stimulus_set_identifier=stimulus_set_identifier,
+            custom_identifier=custom_identifier,
         )
-    )
-    # FIXME directory name could be too long: figure out way to systematically hash/truncate
-    parent_dir.mkdir(exist_ok=True, parents=True)
-    filepaths = {node: parent_dir / f"{node}.nc" for node in nodes}
+        filepaths = {node: cache_dir / f"{node}.nc" for node in self.nodes}
 
-    model, stimuli, pre_hook, post_hook = (
-        model[1],
-        stimuli[1],
-        pre_hook[1],
-        post_hook[1],
-    )
+        nodes_to_compute = self.nodes.copy()
+        for node in self.nodes:
+            if filepaths[node].exists():
+                if use_cached:
+                    nodes_to_compute.remove(node)  # don't re-compute
+                else:
+                    filepaths[node].unlink()  # delete pre-cached features
 
-    nodes_to_compute = nodes.copy()
-    for node in nodes:
-        if filepaths[node].exists():
-            if use_cached:
-                nodes_to_compute.remove(node)  # don't re-compute
-            else:
-                filepaths[node].unlink()  # delete pre-cached features
+        if nodes_to_compute:
+            datapipe = IterableWrapper(stimuli)
+            datapipe = Mapper(datapipe, fn=self.pre_hook)
+            datapipe = Batcher(datapipe, batch_size=batch_size)
+            extractor = create_feature_extractor(
+                self.model, return_nodes=nodes_to_compute
+            )
 
-    if nodes_to_compute:
-        model.eval()
+            netcdf4_files = {
+                node: netCDF4.Dataset(filepaths[node], "w", format="NETCDF4")
+                for node in nodes_to_compute
+            }
 
-        datapipe = IterableWrapper(stimuli)
-        datapipe = Mapper(datapipe, fn=pre_hook)
-        datapipe = Batcher(datapipe, batch_size=batch_size)
-        extractor = create_feature_extractor(model, return_nodes=nodes_to_compute)
+            start = 0
+            for batch, batch_data in enumerate(
+                tqdm(datapipe, desc="batch", leave=False)
+            ):
+                features = extractor(torch.stack(batch_data))
+                features = self.post_hook(features)
 
-        netcdf4_files = {
-            node: netCDF4.Dataset(filepaths[node], "w", format="NETCDF4")
-            for node in nodes_to_compute
+                for node, netcdf4_file in netcdf4_files.items():
+                    features_node = features[node].detach().cpu().numpy()
+
+                    if batch == 0:
+                        self._initialize_netcdf4_file(
+                            file=netcdf4_file,
+                            node=node,
+                            features=features_node,
+                        )
+
+                    end = start + len(batch_data)
+                    features_saved = netcdf4_file.variables[node]
+                    features_saved[start:end, ...] = features_node
+                    netcdf4_file.variables["presentation"][start:end] = stimulus_ids[
+                        start:end
+                    ]
+
+                start += len(batch_data)
+
+            for netcdf4_file in netcdf4_files.values():
+                netcdf4_file.sync()
+                netcdf4_file.close()
+
+        return {
+            node: xr.open_dataarray(filepath) for node, filepath in filepaths.items()
         }
 
-        start = 0
-        for batch, batch_data in enumerate(tqdm(datapipe, desc="batch", leave=False)):
-            features = extractor(torch.stack(batch_data))
-            features = post_hook(features)
+    def _create_cache_directory(
+        self, *, stimulus_set_identifier: str = "", custom_identifier: str = ""
+    ) -> Path:
+        cache_dir = (
+            _MODELS_HOME
+            / "features"
+            / ".".join(
+                [
+                    _
+                    for _ in [
+                        self.model_identifier,
+                        stimulus_set_identifier,
+                        self.pre_hook_identifier,
+                        self.post_hook_identifier,
+                        custom_identifier,
+                    ]
+                    if len(_) != 0
+                ]
+            )
+        )
+        cache_dir.mkdir(exist_ok=True, parents=True)
+        return cache_dir
 
-            for node, netcdf4_file in netcdf4_files.items():
-                features_node = features[node].detach().cpu().numpy()
+    @staticmethod
+    def _initialize_netcdf4_file(
+        *,
+        file: netCDF4.Dataset,
+        node: str,
+        features: torch.Tensor,
+    ) -> None:
+        if features.ndim == 4:
+            dimensions = ["presentation", "channel", "spatial_x", "spatial_y"]
+        elif features.ndim == 2:
+            dimensions = ["presentation", "channel"]
 
-                if batch == 0:
-                    _initialize_netcdf4_file(
-                        node, features_node, len(stimuli), stimulus_ids, netcdf4_file
-                    )
+        for dimension, length in zip(dimensions, (None, *features.shape[1:])):
+            file.createDimension(dimension, length)
+            if dimension == "presentation":
+                variable = file.createVariable(dimension, str, (dimension,))
+            else:
+                variable = file.createVariable(dimension, np.int64, (dimension,))
+                variable[:] = np.arange(length)
 
-                features_saved = netcdf4_file.variables[node]
-                features_saved[start : start + len(batch_data), ...] = features_node
-
-            start += len(batch_data)
-
-        for netcdf4_file in netcdf4_files.values():
-            netcdf4_file.sync()
-            netcdf4_file.close()
-
-    return {node: xr.open_dataarray(filepath) for node, filepath in filepaths.items()}
-
-
-def _initialize_netcdf4_file(
-    node: str,
-    features: torch.Tensor,
-    n_stimuli: int,
-    stimulus_ids: Iterable[str],
-    file: netCDF4.Dataset,
-) -> None:
-    if features.ndim == 4:
-        dimensions = ("presentation", "channel", "spatial_x", "spatial_y")
-    elif features.ndim == 2:
-        dimensions = ("presentation", "channel")
-
-    for dimension, length in zip(dimensions, (n_stimuli, *features.shape[1:])):
-        file.createDimension(dimension, length)
-        if dimension == "presentation" and len(stimulus_ids) != 0:
-            variable = file.createVariable(dimension, str, (dimension,))
-            variable[:] = stimulus_ids
-        else:
-            variable = file.createVariable(dimension, np.int64, (dimension,))
-            variable[:] = np.arange(length)
-
-    dtype = np.dtype(getattr(np, str(features.dtype).replace("torch.", "")))
-    file.createVariable(node, dtype, dimensions)
+        dtype = np.dtype(getattr(np, str(features.dtype).replace("torch.", "")))
+        file.createVariable(node, dtype, dimensions)

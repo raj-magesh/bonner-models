@@ -1,9 +1,9 @@
-from typing import Mapping
+from typing import Dict
 
 import torch
 
 
-def global_maxpool(features: Mapping[str, torch.Tensor]) -> Mapping[str, torch.Tensor]:
+def global_maxpool(features: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
     for key, value in features.items():
         if value.ndim == 4:
             features[key] = torch.nn.MaxPool2d(value.size()[2:])(value).squeeze()
