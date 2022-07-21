@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable, Dict, List
+from typing import Callable
 
 from tqdm import tqdm
 import netCDF4
@@ -16,11 +16,11 @@ class FeatureExtractor:
     def __init__(
         self,
         model: torch.nn.modules.module.Module,
-        nodes: List[str],
+        nodes: list[str],
         *,
         pre_hook: Callable[[Path], torch.Tensor],
         post_hook: Callable[
-            [Dict[str, torch.Tensor]], Dict[str, torch.Tensor]
+            [dict[str, torch.Tensor]], dict[str, torch.Tensor]
         ] = lambda x: x,
         model_identifier: str = "",
         pre_hook_identifier: str = "",
@@ -34,10 +34,10 @@ class FeatureExtractor:
         :param model: a PyTorch model
         :type model: torch.nn.modules.module.Module
         :param nodes: list of layer names to extract features from, in standard PyTorch format (e.g. 'classifier.0')
-        :type nodes: List[str]
+        :type nodes: list[str]
         :param pre_hook: a function that takes in the path to a stimulus and preprocesses it into a tensor
         :type pre_hook: Callable[[Path], torch.Tensor]
-        :param post_hook: a function that is applied to the dictionary (Dict[str, torch.Tensor]) of features extracted by the model, defaults to lambdax:x
+        :param post_hook: a function that is applied to the dictionary (dict[str, torch.Tensor]) of features extracted by the model, defaults to lambdax:x
         :type post_hook: _type_, optional
         :param model_identifier: identifier for the model, defaults to ""
         :type model_identifier: str, optional
@@ -57,14 +57,14 @@ class FeatureExtractor:
 
     def __call__(
         self,
-        stimuli: List[Path],
+        stimuli: list[Path],
         *,
-        stimulus_ids: List[str] = [],
+        stimulus_ids: list[str] = [],
         stimulus_set_identifier: str = "",
         custom_identifier: str = "",
         use_cached: bool = True,
         batch_size: int = 256,
-    ) -> Dict[str, xr.DataArray]:
+    ) -> dict[str, xr.DataArray]:
         if not stimulus_ids:
             stimulus_ids = [str(id) for id, _ in enumerate(stimuli)]
         else:
@@ -111,7 +111,7 @@ class FeatureExtractor:
                     features_node = features[node].detach().cpu().numpy()
 
                     if batch == 0:
-                        self._initialize_netcdf4_file(
+                        _initialize_netcdf4_file(
                             file=netcdf4_file,
                             node=node,
                             features=features_node,
@@ -145,9 +145,17 @@ class FeatureExtractor:
                     _
                     for _ in [
                         self.model_identifier,
-                        stimulus_set_identifier,
                         self.pre_hook_identifier,
                         self.post_hook_identifier,
+                    ]
+                    if len(_) != 0
+                ]
+            )
+            / ".".join(
+                [
+                    _
+                    for _ in [
+                        stimulus_set_identifier,
                         custom_identifier,
                     ]
                     if len(_) != 0
@@ -157,25 +165,25 @@ class FeatureExtractor:
         cache_dir.mkdir(exist_ok=True, parents=True)
         return cache_dir
 
-    @staticmethod
-    def _initialize_netcdf4_file(
-        *,
-        file: netCDF4.Dataset,
-        node: str,
-        features: torch.Tensor,
-    ) -> None:
-        if features.ndim == 4:
-            dimensions = ["presentation", "channel", "spatial_x", "spatial_y"]
-        elif features.ndim == 2:
-            dimensions = ["presentation", "channel"]
 
-        for dimension, length in zip(dimensions, (None, *features.shape[1:])):
-            file.createDimension(dimension, length)
-            if dimension == "presentation":
-                variable = file.createVariable(dimension, str, (dimension,))
-            else:
-                variable = file.createVariable(dimension, np.int64, (dimension,))
-                variable[:] = np.arange(length)
+def _initialize_netcdf4_file(
+    *,
+    file: netCDF4.Dataset,
+    node: str,
+    features: torch.Tensor,
+) -> None:
+    if features.ndim == 4:
+        dimensions = ["presentation", "channel", "spatial_x", "spatial_y"]
+    elif features.ndim == 2:
+        dimensions = ["presentation", "channel"]
 
-        dtype = np.dtype(getattr(np, str(features.dtype).replace("torch.", "")))
-        file.createVariable(node, dtype, dimensions)
+    for dimension, length in zip(dimensions, (None, *features.shape[1:])):
+        file.createDimension(dimension, length)
+        if dimension == "presentation":
+            variable = file.createVariable(dimension, str, (dimension,))
+        else:
+            variable = file.createVariable(dimension, np.int64, (dimension,))
+            variable[:] = np.arange(length)
+
+    dtype = np.dtype(getattr(np, str(features.dtype).replace("torch.", "")))
+    file.createVariable(node, dtype, dimensions)
