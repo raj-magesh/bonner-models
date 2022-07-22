@@ -38,3 +38,4 @@ All data will be stored at the path specified by `BONNER_MODELS_HOME`.
 - TODO write tests
 - TODO write documentation
 - TODO remove `setup.py` once `setuptools` [allows editable installs with a `pyproject.toml`](https://github.com/pypa/setuptools/issues/2816)
+- TODO use DataLoaderV2 to implement multiprocessing for loading data input

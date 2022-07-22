@@ -26,25 +26,18 @@ class FeatureExtractor:
         pre_hook_identifier: str = "",
         post_hook_identifier: str = "",
     ) -> None:
-        """
-        TODO write documentation
+        """TODO write documentation.
+
         TODO this function writes to netCDF files on disk at every batch: is this asynchronous and does it begin computing the next batch in parallel or not?
         TODO automatically extract identifiers if unspecified
 
         :param model: a PyTorch model
-        :type model: torch.nn.modules.module.Module
         :param nodes: list of layer names to extract features from, in standard PyTorch format (e.g. 'classifier.0')
-        :type nodes: list[str]
         :param pre_hook: a function that takes in the path to a stimulus and preprocesses it into a tensor
-        :type pre_hook: Callable[[Path], torch.Tensor]
         :param post_hook: a function that is applied to the dictionary (dict[str, torch.Tensor]) of features extracted by the model, defaults to lambdax:x
-        :type post_hook: _type_, optional
         :param model_identifier: identifier for the model, defaults to ""
-        :type model_identifier: str, optional
         :param pre_hook_identifier: identifier for the pre_hook, defaults to ""
-        :type pre_hook_identifier: str, optional
         :param post_hook_identifier: identifier for the post_hook, defaults to ""
-        :type post_hook_identifier: str, optional
         """
         self.model = model
         self.model.eval()
